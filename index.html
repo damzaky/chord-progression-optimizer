@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Chord Progression Optimizer</title>
+    <meta
+      name="description"
+      content="Chord Progression Optimizer, Inversion finder, Minimizer, etc."
+    />
+    <meta name="keywords" content="Chord progression optimizer" />
+  </head>
+  <body>
+    <h2>Optimal Chord Inversion Minimizer</h2>
+    <label>Key: <input id="key" placeholder="C" /></label><br /><br />
+    <label
+      >Chord Degrees (space separated):
+      <input id="degrees" placeholder="1 4 5 6" /></label
+    ><br /><br />
+    <button onclick="compute()">Find Best Inversions</button>
+    <pre id="result"></pre>
+
+    <h2>Optimal Chord Progression Minimizer</h2>
+    <label>Key: <input id="key2" placeholder="C" /></label><br /><br />
+    <label
+      >Chord Degrees (space separated):
+      <input id="degrees2" placeholder="6 4 1 5" /></label
+    ><br /><br />
+    <button onclick="compute2()">Find Shortest Progression</button>
+    <p id="result2"></p>
+
+    <h2>Smooth Voice Leading (Chord Inversion Optimizer)</h2>
+    <label>Key: <input id="key3" placeholder="C" /></label><br /><br />
+    <label
+      >Chord Degrees (space separated):
+      <input id="degrees3" placeholder="1 4 5 6" /></label
+    ><br /><br />
+    <button onclick="compute3()">Optimize</button>
+    <pre id="result3"></pre>
+
+    <script>
+      const NOTE_ORDER = [
+        "C",
+        "C#",
+        "D",
+        "D#",
+        "E",
+        "F",
+        "F#",
+        "G",
+        "G#",
+        "A",
+        "A#",
+        "B",
+      ];
+      const MAJOR_SCALE_INTERVALS = [0, 2, 4, 5, 7, 9, 11];
+      const SCALE_DEGREES = [0, 2, 4, 5, 7, 9, 11]; // major scale: 1-7
+
+      function noteNameToMidi(note, octave) {
+        return NOTE_ORDER.indexOf(note) + 12 * (octave + 1);
+      }
+
+      function midiToNoteName(midi) {
+        const note = NOTE_ORDER[midi % 12];
+        const octave = Math.floor(midi / 12) - 1;
+        return `${note}${octave}`;
+      }
+
+      function getScaleInKey(key) {
+        const baseIndex = NOTE_ORDER.indexOf(
+          key.replace("♭", "b").replace("♯", "#")
+        );
+        return MAJOR_SCALE_INTERVALS.map(
+          (interval) => (baseIndex + interval) % 12
+        );
+      }
+
+      function getNoteNameFromScaleDegree(scale, degree) {
+        const index = scale[(degree - 1) % 7];
+        return NOTE_ORDER[index];
+      }
+
+      function buildChord(degree, scale) {
+        const rootIdx = (degree - 1) % 7;
+        const root = scale[rootIdx];
+        const third = scale[(rootIdx + 2) % 7];
+        const fifth = scale[(rootIdx + 4) % 7];
+        return [root, third, fifth];
+      }
+
+      function generateChordInversions(chordNotes, octave = 4) {
+        chordNotes = chordNotes.map((semitone) => (semitone + 12) % 12);
+        const base = octave * 12;
+        const options = [];
+
+        const permutations = [
+          [0, 1, 2], // root
+          [1, 2, 0], // 1st inversion
+          [2, 0, 1], // 2nd inversion
+        ];
+
+        for (let p of permutations) {
+          let midiChord = [];
+          let prevMidi = null;
+          for (let i = 0; i < 3; i++) {
+            const note = chordNotes[p[i]];
+            let midi = base + note;
+            while (prevMidi !== null && midi <= prevMidi) {
+              midi += 12;
+            }
+            prevMidi = midi;
+            midiChord.push(midi);
+          }
+          options.push(midiChord);
+        }
+
+        return options;
+      }
+
+      function totalMovement(firstChord, lastChord) {
+        let total = 0;
+        for (let i = 0; i < 3; i++) {
+          total += Math.abs(firstChord[i] - lastChord[i]);
+        }
+        return total;
+      }
+
+      function totalVoiceMovement(chords) {
+        let total = 0;
+        for (let i = 1; i < chords.length; i++) {
+          const a = chords[i - 1];
+          const b = chords[i];
+          for (let j = 0; j < 3; j++) {
+            total += Math.abs(b[j] - a[j]);
+          }
+        }
+        return total;
+      }
+
+      function compute() {
+        const key = document.getElementById("key").value.trim();
+        const degrees = document
+          .getElementById("degrees")
+          .value.trim()
+          .split(/\s+/)
+          .map(Number);
+        const scale = getScaleInKey(key);
+        const allInversionSets = [];
+
+        for (let degree of degrees) {
+          const chord = buildChord(degree, scale);
+          const inversions = generateChordInversions(chord);
+          allInversionSets.push(inversions);
+        }
+
+        function* combinations(sets, idx = 0, current = []) {
+          if (idx === sets.length) {
+            yield current;
+          } else {
+            for (let inv of sets[idx]) {
+              yield* combinations(sets, idx + 1, current.concat([inv]));
+            }
+          }
+        }
+
+        let bestCombo = null;
+        let minDistance = Infinity;
+
+        for (let combo of combinations(allInversionSets)) {
+          const dist = totalMovement(combo[0], combo[combo.length - 1]);
+          if (dist < minDistance) {
+            minDistance = dist;
+            bestCombo = combo;
+          }
+        }
+
+        const output =
+          bestCombo
+            .map((chord) => chord.map(midiToNoteName).join("-"))
+            .join("\n") + `\n\nTotal movement: ${minDistance} semitones`;
+
+        document.getElementById("result").innerText = output;
+      }
+
+      function compute2() {
+        const keyInput = document.getElementById("key2").value.trim();
+        const degInput = document
+          .getElementById("degrees2")
+          .value.trim()
+          .split(/\s+/)
+          .map(Number);
+        const scale = getScaleInKey(keyInput);
+
+        const candidatesPerChord = degInput.map((degree) => {
+          const note = getNoteNameFromScaleDegree(scale, degree);
+          return [-1, 0, 1].map((octShift) => {
+            const octave = 4 + octShift;
+            const midi = noteNameToMidi(note, octave);
+            return { note: midiToNoteName(midi), midi };
+          });
+        });
+
+        function* permutations(list, depth = 0, current = []) {
+          if (depth === list.length) {
+            yield current;
+          } else {
+            for (const item of list[depth]) {
+              yield* permutations(list, depth + 1, current.concat(item));
+            }
+          }
+        }
+
+        let bestPerms = [];
+        let bestDist = Infinity;
+
+        for (const perm of permutations(candidatesPerChord)) {
+          let dist = 0;
+          for (let i = 1; i < perm.length; i++) {
+            dist += Math.abs(perm[i].midi - perm[i - 1].midi);
+          }
+
+          if (dist < bestDist) {
+            bestDist = dist;
+            bestPerms = [perm];
+          } else if (dist === bestDist) {
+            bestPerms.push(perm);
+          }
+        }
+
+        const resultText =
+          bestPerms.map((p) => p.map((n) => n.note).join(" ")).join("\n") +
+          `\n(Total semitone movement: ${bestDist})`;
+
+        document.getElementById("result2").innerText = resultText;
+      }
+
+      function compute3() {
+        const key = document.getElementById("key3").value.trim();
+        const degrees = document
+          .getElementById("degrees3")
+          .value.trim()
+          .split(/\s+/)
+          .map(Number);
+        const scale = getScaleInKey(key);
+        const allInversionSets = [];
+
+        for (let degree of degrees) {
+          const chord = buildChord(degree, scale);
+          const inversions = generateChordInversions(chord);
+          allInversionSets.push(inversions);
+        }
+
+        function* combinations(sets, idx = 0, current = []) {
+          if (idx === sets.length) {
+            yield current;
+          } else {
+            for (let inv of sets[idx]) {
+              yield* combinations(sets, idx + 1, current.concat([inv]));
+            }
+          }
+        }
+
+        let bestCombo = null;
+        let minDistance = Infinity;
+
+        for (let combo of combinations(allInversionSets)) {
+          const dist = totalVoiceMovement(combo);
+          if (dist < minDistance) {
+            minDistance = dist;
+            bestCombo = combo;
+          }
+        }
+
+        const output =
+          bestCombo
+            .map((chord) => chord.map(midiToNoteName).join("-"))
+            .join("\n") +
+          `\n\nTotal movement across all voices: ${minDistance} semitones`;
+
+        document.getElementById("result3").innerText = output;
+      }
+    </script>
+  </body>
+</html>
